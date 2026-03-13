@@ -67,10 +67,22 @@
         color: inherit;
         outline: none;
       }
-      @media (prefers-color-scheme: dark) {
-        input[type="number"], input[type="text"], select { background: var(--input-bg-dark); border-color: rgba(148, 163, 184, 0.8); }
+      textarea {
+        width: 100%;
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid var(--input-border);
+        background: var(--input-bg-light);
+        font-size: 0.85rem;
+        color: inherit;
+        outline: none;
+        min-height: 2.5em;
+        resize: vertical;
       }
-      input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4); }
+      @media (prefers-color-scheme: dark) {
+        input[type="number"], input[type="text"], select, textarea { background: var(--input-bg-dark); border-color: rgba(148, 163, 184, 0.8); }
+      }
+      input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4); }
       button[type="submit"] {
         margin-top: 6px;
         padding: 8px 14px;
@@ -133,8 +145,8 @@
             </div>
             <div class="field-group">
               <div class="field">
-                <label for="text">Text</label>
-                <input id="text" name="text" type="text" value="HELLO" placeholder="HELLO" />
+                <label for="text">Text <span class="hint">Line breaks allowed.</span></label>
+                <textarea id="text" name="text" rows="3" placeholder="HELLO">HELLO</textarea>
               </div>
               <div class="field">
                 <label for="padding">Padding [mm] <span class="hint">Margin inside rectangle.</span></label>

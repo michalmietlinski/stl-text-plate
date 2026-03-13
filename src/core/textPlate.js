@@ -278,23 +278,31 @@ export async function loadFont(source) {
 
 /**
  * Get text contours using opentype font. Scaled to fit rect, centered.
+ * Supports line breaks (\n or \r\n): each line is laid out with a vertical offset, then the block is scaled to fit.
  * Uses getPaths() for one path per glyph so we can group contours by letter (TTF and CFF safe).
  * Returns { glyphContours, bounds } where glyphContours = [ [contour, contour, ...], ... ] per glyph.
  */
 export function getTextContoursFromFont(font, text, rectWidth, rectHeight, letterHeightMm, padding = 1, opts = {}) {
   if (!text || !font) return { glyphContours: [], bounds: { width: 0, height: 0 } };
   const fontSize = 100;
-  let paths = font.getPaths ? font.getPaths(text, 0, 0, fontSize) : null;
-  if (!paths || paths.length === 0) paths = [font.getPath(text, 0, 0, fontSize)];
-  let glyphRaw = paths.map((path) => flattenPath(path));
+  const lineHeight = fontSize * 1.2;
+  const lines = String(text).split(/\r?\n/);
+  const allPaths = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const baselineY = -(lines.length - 1 - i) * lineHeight;
+    let paths = font.getPaths ? font.getPaths(line, 0, baselineY, fontSize) : null;
+    if (!paths || paths.length === 0) paths = [font.getPath(line, 0, baselineY, fontSize)];
+    allPaths.push(...paths);
+  }
+  let glyphRaw = allPaths.map((path) => flattenPath(path));
   const totalContours = glyphRaw.reduce((s, c) => s + c.length, 0);
-  // If getPaths returned many paths but almost no contours (e.g. one path per contour or API quirk), use single getPath
-  if (paths.length > 1 && totalContours < 2) {
-    const singlePath = font.getPath(text, 0, 0, fontSize);
+  if (allPaths.length > 1 && totalContours < 2) {
+    const singlePath = font.getPath(String(text).replace(/\r?\n/g, "\n"), 0, 0, fontSize);
     glyphRaw = [flattenPath(singlePath)];
     if (opts.debug) console.warn(`[debug getTextContours] fallback to single path: ${glyphRaw[0].length} contours`);
   }
-  if (opts.debug) console.warn(`[debug getTextContours] paths=${paths.length} contoursPerPath=[${glyphRaw.map((c) => c.length).join(",")}]`);
+  if (opts.debug) console.warn(`[debug getTextContours] paths=${allPaths.length} contoursPerPath=[${glyphRaw.map((c) => c.length).join(",")}]`);
   const allRaw = glyphRaw.flat();
   const bounds = contoursBounds(allRaw);
   if (bounds.width < 1e-6 || bounds.height < 1e-6) return { glyphContours: [], bounds };
@@ -304,7 +312,6 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
   ) || 1;
   const offsetX = rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale;
   const offsetY = rectHeight / 2 - (bounds.minY + bounds.height / 2) * scale;
-  // Font Y is up; mirror in Y so text is right-side up when viewing from +Z (typical STL viewer)
   const fit = (c) =>
     c.map(([x, y]) => {
       const px = x * scale + offsetX;
@@ -317,14 +324,23 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
 
 /**
  * Get text segments using JSCAD vectorText (built-in font). Returns array of segments (each segment = [[x,y],...]).
- * Scaled to fit rect and centered.
+ * Supports line breaks (\n or \r\n). Scaled to fit rect and centered.
  */
 export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 1) {
   if (!textStr) return [];
   const height = 21;
-  const segments = textModule.vectorText({ height, align: "center" }, textStr);
-  if (segments.length === 0) return [];
-  const allPoints = segments.flat();
+  const lineHeight = height * 1.3;
+  const lines = String(textStr).split(/\r?\n/);
+  const allSegments = [];
+  for (let i = 0; i < lines.length; i++) {
+    const segments = textModule.vectorText({ height, align: "center" }, lines[i]);
+    const offsetY = -(lines.length - 1 - i) * lineHeight;
+    for (const seg of segments) {
+      allSegments.push(seg.map(([x, y]) => [x, y + offsetY]));
+    }
+  }
+  if (allSegments.length === 0) return [];
+  const allPoints = allSegments.flat();
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [x, y] of allPoints) {
     if (x < minX) minX = x;
@@ -340,7 +356,7 @@ export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 
   const offsetX = rectWidth / 2 - (minX + width / 2) * scale;
   const offsetY = rectHeight / 2 - (minY + height2 / 2) * scale;
 
-  return segments.map((seg) =>
+  return allSegments.map((seg) =>
     seg.map(([x, y]) => [x * scale + offsetX, y * scale + offsetY])
   );
 }

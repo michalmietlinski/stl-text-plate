@@ -401,8 +401,16 @@
             ot.load(fontUrl, (err, f) => (err ? reject(err) : resolve(f)));
           });
           if (font && params.text) {
-            const paths = font.getPaths ? font.getPaths(params.text, 0, 0, 100) : [font.getPath(params.text, 0, 0, 100)];
-            const glyphRaw = paths.map((p) => flattenPath(p));
+            const fontSize = 100;
+            const lineHeight = fontSize * 1.2;
+            const lines = String(params.text).split(/\r?\n/);
+            const allPaths = [];
+            for (let i = 0; i < lines.length; i++) {
+              const baselineY = -(lines.length - 1 - i) * lineHeight;
+              const paths = font.getPaths ? font.getPaths(lines[i], 0, baselineY, fontSize) : [font.getPath(lines[i], 0, baselineY, fontSize)];
+              for (let k = 0; k < paths.length; k++) allPaths.push(paths[k]);
+            }
+            const glyphRaw = allPaths.map((p) => flattenPath(p));
             const allRaw = [];
             for (let g = 0; g < glyphRaw.length; g++) {
               for (let c = 0; c < glyphRaw[g].length; c++) allRaw.push(glyphRaw[g][c]);
