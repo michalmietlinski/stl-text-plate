@@ -1,0 +1,12 @@
+{
+  "rectangleWidth": 80,
+  "rectangleHeight": 40,
+  "thickness": 2,
+  "letterHeight": 2,
+  "text": "HELLO",
+  "padding": 2,
+  "fontUrl": "https://cdn.jsdelivr.net/npm/opensans-font@1.0.0/OpenSans-Bold.ttf",
+  "addStake": true,
+  "stakeWidth": 8,
+  "stakeHeight": 60
+}

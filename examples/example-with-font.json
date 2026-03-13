@@ -1,0 +1,9 @@
+{
+  "rectangleWidth": 100,
+  "rectangleHeight": 50,
+  "thickness": 3,
+  "letterHeight": 3,
+  "text": "HELLO",
+  "padding": 3,
+  "fontUrl": "https://cdn.jsdelivr.net/npm/open-sans-font@1.0.0/fonts/bold/OpenSans-Bold.ttf"
+}
