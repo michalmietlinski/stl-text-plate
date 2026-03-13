@@ -153,12 +153,6 @@
                 <input id="padding" name="padding" type="number" min="0" step="0.5" value="2" />
               </div>
             </div>
-            <div class="field-group">
-              <div class="field" style="flex: 1 1 100%;">
-                <label for="fontUrl">Font URL <span class="hint">Optional. TTF/OTF for Arial Bold style. Default: Open Sans Bold.</span></label>
-                <input id="fontUrl" name="fontUrl" type="text" placeholder="Leave empty for default" />
-              </div>
-            </div>
             <div class="field-group" style="align-items: flex-start;">
               <div class="field" style="display: flex; align-items: center; gap: 8px; padding-top: 20px;">
                 <input id="addStake" name="addStake" type="checkbox" value="1" />
@@ -184,7 +178,7 @@
         </section>
         <aside class="card">
           <h2 class="sidebar-title">About</h2>
-          <p class="sidebar-text">Parameters match the CLI JSON. Use <code>npm run build-web</code> and deploy <code>docs/</code> for GitHub Pages. Font: load Arial Bold (or similar) via font URL for best results; otherwise built-in vector font is used.</p>
+          <p class="sidebar-text">Parameters match the CLI JSON. Run <code>npm run download-font</code> then <code>npm run build-web</code>; deploy <code>docs/</code> for GitHub Pages. Font (Open Sans Bold) is bundled in <code>docs/fonts/</code>.</p>
         </aside>
       </main>
     </div>

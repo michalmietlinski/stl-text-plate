@@ -2,8 +2,8 @@
   "use strict";
 
   const BEZIER_SAMPLES = 8;
-  // Default font for web: use unpkg (reliable from browser). CLI uses same font from cache.
-  const DEFAULT_FONT_URL = "https://unpkg.com/open-sans-fonts@1.6.2/open-sans/Bold/OpenSans-Bold.ttf";
+  // Font bundled with the app (web/fonts/ or docs/fonts/ on GitHub Pages). Run npm run download-font then npm run build-web.
+  const LOCAL_FONT_PATH = "fonts/OpenSans-Bold.ttf";
 
   function toFiniteNumber(raw, label) {
     const value = Number(raw);
@@ -376,7 +376,6 @@
       letterHeight: toFiniteNumber(val("letterHeight", 2), "Letter height"),
       text: (val("text", "HELLO") || "HELLO").trim(),
       padding: toFiniteNumber(val("padding", 2), "Padding"),
-      fontUrl: val("fontUrl", "") || null,
       addStake: (form?.elements?.addStake && form.elements.addStake.checked) || false,
       stakeWidth: toFiniteNumber(val("stakeWidth", 8), "Stake width"),
       stakeHeight: toFiniteNumber(val("stakeHeight", 60), "Stake height")
@@ -392,13 +391,12 @@
     }
     try {
       const params = collectParamsFromForm(form);
-      const fontUrl = params.fontUrl || DEFAULT_FONT_URL;
       let contours = [];
       const ot = typeof opentype !== "undefined" ? opentype : (typeof window !== "undefined" && window.opentype);
-      if (ot && fontUrl) {
+      if (ot) {
         try {
           const font = await new Promise((resolve, reject) => {
-            ot.load(fontUrl, (err, f) => (err ? reject(err) : resolve(f)));
+            ot.load(LOCAL_FONT_PATH, (err, f) => (err ? reject(err) : resolve(f)));
           });
           if (font && params.text) {
             const fontSize = 100;
@@ -436,7 +434,7 @@
           }
         } catch (err) {
           const msg = err && err.message ? err.message : String(err);
-          setStatus("Could not load font: " + msg + ". Check font URL or try leaving it empty for default.", true);
+          setStatus("Could not load font: " + msg + ". Ensure fonts/OpenSans-Bold.ttf is present (run npm run download-font, then npm run build-web).", true);
         }
       }
       params.contours = contours;
@@ -444,9 +442,9 @@
       const filename = `plate_${params.rectangleWidth}x${params.rectangleHeight}.stl`;
       downloadStlFile(filename, stl);
       const hasNoText = (params.glyphContours && params.glyphContours.length === 0) || (!params.glyphContours && (!params.contours || params.contours.length === 0));
-      if (fontUrl && hasNoText && params.text) {
+      if (hasNoText && params.text && ot) {
         setStatus(
-          `Downloaded: ${filename} (plate only — no text). Font failed or produced no contours. Try another font URL or check the browser console.`,
+          `Downloaded: ${filename} (plate only — no text). Font may have failed to load.`,
           true
         );
       } else {
