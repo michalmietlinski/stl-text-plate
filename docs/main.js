@@ -317,6 +317,17 @@
             else holes.push(closed[i]);
           }
         }
+        if (closed.length === 2 && outers.length === 2 && holes.length === 0) {
+          const c0 = outers[0], c1 = outers[1];
+          const cen1 = contourCentroid(c1), cen0 = contourCentroid(c0);
+          if (pointInPolygon(cen1, c0)) {
+            outers.length = 0; outers.push(c0);
+            holes.length = 0; holes.push(c1);
+          } else if (pointInPolygon(cen0, c1)) {
+            outers.length = 0; outers.push(c1);
+            holes.length = 0; holes.push(c0);
+          }
+        }
         const holesByOuter = outers.map(() => []);
         for (let hi = 0; hi < holes.length; hi++) {
           const cen = contourCentroid(holes[hi]);
@@ -332,7 +343,15 @@
           if (bestK >= 0) holesByOuter[bestK].push(holes[hi]);
         }
         for (let k = 0; k < outers.length; k++) {
-          const triangles = triangulateWithHoles(outers[k], holesByOuter[k]);
+          const outerContour = outers[k].map((p) => [p[0], p[1]]);
+          if (signedArea(outerContour) < 0) outerContour.reverse();
+          const outerSign = Math.sign(signedArea(outerContour));
+          const holesForEarcut = holesByOuter[k].map((h) => {
+            const hole = h.map((p) => [p[0], p[1]]);
+            if (Math.sign(signedArea(hole)) === outerSign) hole.reverse();
+            return hole;
+          });
+          const triangles = triangulateWithHoles(outerContour, holesForEarcut);
           for (let t = 0; t < triangles.length; t++) {
             const tri = triangles[t];
             const ax = tri[0][0], ay = tri[0][1], bx = tri[1][0], by = tri[1][1], cx = tri[2][0], cy = tri[2][1];
@@ -376,6 +395,10 @@
       letterHeight: toFiniteNumber(val("letterHeight", 2), "Letter height"),
       text: (val("text", "HELLO") || "HELLO").trim(),
       padding: toFiniteNumber(val("padding", 2), "Padding"),
+      textAlign: (function () {
+        const v = (val("textAlign", "left") || "left").toLowerCase();
+        return v === "center" || v === "right" ? v : "left";
+      })(),
       addStake: (form?.elements?.addStake && form.elements.addStake.checked) || false,
       stakeWidth: toFiniteNumber(val("stakeWidth", 8), "Stake width"),
       stakeHeight: toFiniteNumber(val("stakeHeight", 60), "Stake height")
@@ -402,13 +425,13 @@
             const fontSize = 100;
             const lineHeight = fontSize * 1.2;
             const lines = String(params.text).split(/\r?\n/);
-            const allPaths = [];
+            const pathsPerLine = [];
             for (let i = 0; i < lines.length; i++) {
               const baselineY = -(lines.length - 1 - i) * lineHeight;
-              const paths = font.getPaths ? font.getPaths(lines[i], 0, baselineY, fontSize) : [font.getPath(lines[i], 0, baselineY, fontSize)];
-              for (let k = 0; k < paths.length; k++) allPaths.push(paths[k]);
+              const path = font.getPath(lines[i], 0, baselineY, fontSize);
+              pathsPerLine.push(path);
             }
-            const glyphRaw = allPaths.map((p) => flattenPath(p));
+            const glyphRaw = pathsPerLine.map((p) => flattenPath(p));
             const allRaw = [];
             for (let g = 0; g < glyphRaw.length; g++) {
               for (let c = 0; c < glyphRaw[g].length; c++) allRaw.push(glyphRaw[g][c]);
@@ -418,10 +441,15 @@
               const rectWidth = params.rectangleWidth;
               const rectHeight = params.rectangleHeight;
               const padding = params.padding ?? 2;
+              const textAlign = params.textAlign || "left";
               const innerW = Math.max(0.1, rectWidth - 2 * padding);
               const innerH = Math.max(0.1, rectHeight - 2 * padding);
               const scale = Math.min(innerW / bounds.width, innerH / bounds.height) || 1;
-              const offsetX = rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale;
+              const offsetX = textAlign === "right"
+                ? rectWidth - padding - (bounds.minX + bounds.width) * scale
+                : textAlign === "center"
+                  ? rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale
+                  : padding - bounds.minX * scale;
               const offsetY = rectHeight / 2 - (bounds.minY + bounds.height / 2) * scale;
               const fit = (c) =>
                 c.map(([x, y]) => {

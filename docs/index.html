@@ -144,13 +144,23 @@
               </div>
             </div>
             <div class="field-group">
-              <div class="field">
+              <div class="field" style="flex: 1 1 100%;">
                 <label for="text">Text <span class="hint">Line breaks allowed.</span></label>
                 <textarea id="text" name="text" rows="3" placeholder="HELLO">HELLO</textarea>
               </div>
+            </div>
+            <div class="field-group">
               <div class="field">
                 <label for="padding">Padding [mm] <span class="hint">Margin inside rectangle.</span></label>
                 <input id="padding" name="padding" type="number" min="0" step="0.5" value="2" />
+              </div>
+              <div class="field">
+                <label for="textAlign">Text align</label>
+                <select id="textAlign" name="textAlign">
+                  <option value="left" selected>Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                </select>
               </div>
             </div>
             <div class="field-group" style="align-items: flex-start;">
@@ -178,7 +188,7 @@
         </section>
         <aside class="card">
           <h2 class="sidebar-title">About</h2>
-          <p class="sidebar-text">Parameters match the CLI JSON. Run <code>npm run download-font</code> then <code>npm run build-web</code>; deploy <code>docs/</code> for GitHub Pages. Font (Open Sans Bold) is bundled in <code>docs/fonts/</code>.</p>
+          <p class="sidebar-text">Parameters match the CLI JSON. Run <code>npm run download-font</code> then <code>npm run build-web</code>; deploy <code>docs/</code> for GitHub Pages. Font (Open Sans Bold) is bundled in <code>docs/fonts/</code>. For local testing run <code>npm run dev</code> and open http://localhost:3000 (do not open the HTML file directly — the browser blocks loading the font from <code>file://</code>).</p>
         </aside>
       </main>
     </div>

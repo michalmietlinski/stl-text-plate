@@ -6,7 +6,8 @@
   "scripts": {
     "generate": "node src/cli/index.js",
     "build-web": "node tools/build_web.js",
-    "download-font": "node tools/download-font.js"
+    "download-font": "node tools/download-font.js",
+    "dev": "npx serve docs -p 3000"
   },
   "dependencies": {
     "@jscad/modeling": "^2.13.0",

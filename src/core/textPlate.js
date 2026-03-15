@@ -276,33 +276,38 @@ export async function loadFont(source) {
   return null;
 }
 
+/** Horizontal offset for text block: left = padding, center = centered, right = rectWidth - padding. */
+function offsetXForAlign(align, rectWidth, padding, boundsMinX, boundsWidth, scale) {
+  const a = (align || "left").toLowerCase();
+  if (a === "right") return rectWidth - padding - (boundsMinX + boundsWidth) * scale;
+  if (a === "center") return rectWidth / 2 - (boundsMinX + boundsWidth / 2) * scale;
+  return padding - boundsMinX * scale;
+}
+
 /**
- * Get text contours using opentype font. Scaled to fit rect, centered.
+ * Get text contours using opentype font. Scaled to fit rect; horizontal alignment via opts.textAlign (left|center|right).
  * Supports line breaks (\n or \r\n): each line is laid out with a vertical offset, then the block is scaled to fit.
  * Uses getPaths() for one path per glyph so we can group contours by letter (TTF and CFF safe).
  * Returns { glyphContours, bounds } where glyphContours = [ [contour, contour, ...], ... ] per glyph.
  */
 export function getTextContoursFromFont(font, text, rectWidth, rectHeight, letterHeightMm, padding = 1, opts = {}) {
   if (!text || !font) return { glyphContours: [], bounds: { width: 0, height: 0 } };
+  const textAlign = (opts.textAlign || "left").toLowerCase();
   const fontSize = 100;
   const lineHeight = fontSize * 1.2;
   const lines = String(text).split(/\r?\n/);
-  const allPaths = [];
+  // Use one path per line (getPath) so all contours for all characters are in one path.
+  // That way outer+hole pairs (O, P, R, e, etc.) stay together; getPaths() can return one path per
+  // contour in some fonts, which would make hole contours separate "glyphs" and get extruded as solid.
+  const pathsPerLine = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const baselineY = -(lines.length - 1 - i) * lineHeight;
-    let paths = font.getPaths ? font.getPaths(line, 0, baselineY, fontSize) : null;
-    if (!paths || paths.length === 0) paths = [font.getPath(line, 0, baselineY, fontSize)];
-    allPaths.push(...paths);
+    const path = font.getPath(line, 0, baselineY, fontSize);
+    pathsPerLine.push(path);
   }
-  let glyphRaw = allPaths.map((path) => flattenPath(path));
-  const totalContours = glyphRaw.reduce((s, c) => s + c.length, 0);
-  if (allPaths.length > 1 && totalContours < 2) {
-    const singlePath = font.getPath(String(text).replace(/\r?\n/g, "\n"), 0, 0, fontSize);
-    glyphRaw = [flattenPath(singlePath)];
-    if (opts.debug) console.warn(`[debug getTextContours] fallback to single path: ${glyphRaw[0].length} contours`);
-  }
-  if (opts.debug) console.warn(`[debug getTextContours] paths=${allPaths.length} contoursPerPath=[${glyphRaw.map((c) => c.length).join(",")}]`);
+  let glyphRaw = pathsPerLine.map((path) => flattenPath(path));
+  if (opts.debug) console.warn(`[debug getTextContours] lines=${lines.length} contoursPerLine=[${glyphRaw.map((c) => c.length).join(",")}]`);
   const allRaw = glyphRaw.flat();
   const bounds = contoursBounds(allRaw);
   if (bounds.width < 1e-6 || bounds.height < 1e-6) return { glyphContours: [], bounds };
@@ -310,7 +315,7 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
     Math.max(0.1, rectWidth - 2 * padding) / bounds.width,
     Math.max(0.1, rectHeight - 2 * padding) / bounds.height
   ) || 1;
-  const offsetX = rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale;
+  const offsetX = offsetXForAlign(textAlign, rectWidth, padding, bounds.minX, bounds.width, scale);
   const offsetY = rectHeight / 2 - (bounds.minY + bounds.height / 2) * scale;
   const fit = (c) =>
     c.map(([x, y]) => {
@@ -324,10 +329,11 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
 
 /**
  * Get text segments using JSCAD vectorText (built-in font). Returns array of segments (each segment = [[x,y],...]).
- * Supports line breaks (\n or \r\n). Scaled to fit rect and centered.
+ * Supports line breaks (\n or \r\n). Scaled to fit rect; horizontal alignment via textAlign (left|center|right).
  */
-export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 1) {
+export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 1, textAlign = "left") {
   if (!textStr) return [];
+  const align = (textAlign || "left").toLowerCase();
   const height = 21;
   const lineHeight = height * 1.3;
   const lines = String(textStr).split(/\r?\n/);
@@ -353,7 +359,7 @@ export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 
   const innerW = Math.max(0.1, rectWidth - 2 * padding);
   const innerH = Math.max(0.1, rectHeight - 2 * padding);
   const scale = Math.min(innerW / width, innerH / height2) || 1;
-  const offsetX = rectWidth / 2 - (minX + width / 2) * scale;
+  const offsetX = offsetXForAlign(align, rectWidth, padding, minX, width, scale);
   const offsetY = rectHeight / 2 - (minY + height2 / 2) * scale;
 
   return allSegments.map((seg) =>
@@ -399,7 +405,7 @@ function createStake(stakeWidth, thickness, stakeHeight) {
 }
 
 /**
- * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
+ * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, textAlign?, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
  */
 export async function generate(params, options = {}) {
   const name = options.name || "text_plate";
@@ -409,6 +415,9 @@ export async function generate(params, options = {}) {
   const letterHeight = toFiniteNumber(params.letterHeight ?? 2, "letterHeight");
   const text = params.text != null ? String(params.text) : "HELLO";
   const padding = toFiniteNumber(params.padding ?? 2, "padding");
+  const textAlign = ["left", "center", "right"].includes(String(params.textAlign || "left").toLowerCase())
+    ? String(params.textAlign).toLowerCase()
+    : "left";
   const fontPath = params.fontPath ?? null;
   const fontUrl = params.fontUrl ?? params.fontPath ?? null;
   const addStake = params.addStake === true;
@@ -432,11 +441,11 @@ export async function generate(params, options = {}) {
   if (!font && fontPath) font = await loadFont(fontPath);
   if (options.debug) console.error(`[debug] font loaded: ${!!font} (tried url then path)`);
   if (font) {
-    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, options);
+    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, { ...options, textAlign });
     glyphContours = out.glyphContours || [];
   }
   if (glyphContours.length === 0) {
-    const segments = getTextSegmentsVector(text, rectangleWidth, rectangleHeight, padding);
+    const segments = getTextSegmentsVector(text, rectangleWidth, rectangleHeight, padding, textAlign);
     if (segments.length > 0) glyphContours = segments.map((s) => [s]);
     if (options.debug) console.error(`[debug] using vector fallback: ${segments.length} segments`);
     if (fontPath || fontUrl) {
@@ -504,6 +513,21 @@ export async function generate(params, options = {}) {
 
     if (outers.length === 0) continue;
 
+    // Some fonts (e.g. small "o") use same winding for outer and hole; fix: two contours with same sign -> treat smaller as hole
+    if (closed.length === 2 && outers.length === 2 && holes.length === 0) {
+      const c0 = outers[0].contour;
+      const c1 = outers[1].contour;
+      const cen1 = contourCentroid(c1);
+      const cen0 = contourCentroid(c0);
+      if (pointInPolygon(cen1, c0)) {
+        outers = [outers[0]];
+        holes = [c1];
+      } else if (pointInPolygon(cen0, c1)) {
+        outers = [outers[1]];
+        holes = [c0];
+      }
+    }
+
     // Assign each hole to the smallest outer that contains its centroid
     const holesByOuter = outers.map(() => []);
     for (const hole of holes) {
@@ -529,7 +553,12 @@ export async function generate(params, options = {}) {
     for (let k = 0; k < outers.length; k++) {
       const contour = outers[k].contour;
       ensureCounterClockwise(contour);
-      const holes = holesByOuter[k];
+      const outerSign = Math.sign(signedArea(contour));
+      const holes = holesByOuter[k].map((h) => {
+        const hole = [...h].map((p) => [p[0], p[1]]);
+        if (Math.sign(signedArea(hole)) === outerSign) hole.reverse();
+        return hole;
+      });
       const triangles = triangulateShape(contour, holes);
       for (const tri of triangles) {
         const g2 = geom2.fromPoints(tri);
@@ -565,6 +594,7 @@ export async function generate(params, options = {}) {
       letterHeight,
       text,
       name,
+      textAlign,
       addStake: addStake || undefined,
       stakeWidth: addStake ? stakeWidth : undefined,
       stakeHeight: addStake ? stakeHeight : undefined,
