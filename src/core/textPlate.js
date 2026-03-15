@@ -16,7 +16,7 @@ const { translate } = transforms;
 const { geom2, geom3 } = geometries;
 const { extrudeLinear } = extrusions;
 
-const BEZIER_SAMPLES = 8;
+const DEFAULT_RESOLUTION = 16; // Samples per Bézier segment; higher = smoother font curves (circles, arcs).
 
 function toFiniteNumber(value, label) {
   const num = Number(value);
@@ -26,9 +26,10 @@ function toFiniteNumber(value, label) {
 
 /**
  * Flatten opentype path commands to contours (array of [x,y] points per contour).
- * Handles M, L, C, Q, Z.
+ * Handles M, L, C, Q, Z. resolution = samples per Bézier segment (higher = smoother curves).
  */
-function flattenPath(path) {
+function flattenPath(path, resolution = DEFAULT_RESOLUTION) {
+  const samples = Math.max(2, Math.min(128, Math.round(resolution)));
   const contours = [];
   let current = [];
   let last = [0, 0];
@@ -39,8 +40,8 @@ function flattenPath(path) {
   };
 
   const sampleCubic = (x0, y0, x1, y1, x2, y2, x3, y3) => {
-    for (let i = 1; i <= BEZIER_SAMPLES; i++) {
-      const t = i / BEZIER_SAMPLES;
+    for (let i = 1; i <= samples; i++) {
+      const t = i / samples;
       const u = 1 - t;
       const u2 = u * u, u3 = u2 * u;
       const t2 = t * t, t3 = t2 * t;
@@ -51,8 +52,8 @@ function flattenPath(path) {
   };
 
   const sampleQuad = (x0, y0, x1, y1, x2, y2) => {
-    for (let i = 1; i <= BEZIER_SAMPLES; i++) {
-      const t = i / BEZIER_SAMPLES;
+    for (let i = 1; i <= samples; i++) {
+      const t = i / samples;
       const u = 1 - t;
       const x = u * u * x0 + 2 * u * t * x1 + t * t * x2;
       const y = u * u * y0 + 2 * u * t * y1 + t * t * y2;
@@ -306,7 +307,8 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
     const path = font.getPath(line, 0, baselineY, fontSize);
     pathsPerLine.push(path);
   }
-  let glyphRaw = pathsPerLine.map((path) => flattenPath(path));
+  const resolution = Math.max(2, Math.min(128, Math.round(opts.resolution ?? opts.bezierSamples ?? DEFAULT_RESOLUTION)));
+  let glyphRaw = pathsPerLine.map((path) => flattenPath(path, resolution));
   if (opts.debug) console.warn(`[debug getTextContours] lines=${lines.length} contoursPerLine=[${glyphRaw.map((c) => c.length).join(",")}]`);
   const allRaw = glyphRaw.flat();
   const bounds = contoursBounds(allRaw);
@@ -405,7 +407,7 @@ function createStake(stakeWidth, thickness, stakeHeight) {
 }
 
 /**
- * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, textAlign?, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
+ * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, textAlign?, resolution?, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
  */
 export async function generate(params, options = {}) {
   const name = options.name || "text_plate";
@@ -415,6 +417,7 @@ export async function generate(params, options = {}) {
   const letterHeight = toFiniteNumber(params.letterHeight ?? 2, "letterHeight");
   const text = params.text != null ? String(params.text) : "HELLO";
   const padding = toFiniteNumber(params.padding ?? 2, "padding");
+  const resolution = params.resolution != null ? Math.max(2, Math.min(128, Math.round(Number(params.resolution)))) : DEFAULT_RESOLUTION;
   const textAlign = ["left", "center", "right"].includes(String(params.textAlign || "left").toLowerCase())
     ? String(params.textAlign).toLowerCase()
     : "left";
@@ -441,7 +444,7 @@ export async function generate(params, options = {}) {
   if (!font && fontPath) font = await loadFont(fontPath);
   if (options.debug) console.error(`[debug] font loaded: ${!!font} (tried url then path)`);
   if (font) {
-    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, { ...options, textAlign });
+    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, { ...options, textAlign, resolution });
     glyphContours = out.glyphContours || [];
   }
   if (glyphContours.length === 0) {
@@ -595,6 +598,7 @@ export async function generate(params, options = {}) {
       text,
       name,
       textAlign,
+      resolution,
       addStake: addStake || undefined,
       stakeWidth: addStake ? stakeWidth : undefined,
       stakeHeight: addStake ? stakeHeight : undefined,

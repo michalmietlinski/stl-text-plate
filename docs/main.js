@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const BEZIER_SAMPLES = 8;
+  const DEFAULT_RESOLUTION = 16; // Samples per Bézier segment; higher = smoother font curves (circles, arcs).
   // Font bundled with the app (web/fonts/ or docs/fonts/ on GitHub Pages). Run npm run download-font then npm run build-web.
   const LOCAL_FONT_PATH = "fonts/OpenSans-Bold.ttf";
 
@@ -30,7 +30,8 @@
     URL.revokeObjectURL(url);
   }
 
-  function flattenPath(path) {
+  function flattenPath(path, resolution) {
+    const samples = Math.max(2, Math.min(128, Math.round(resolution ?? DEFAULT_RESOLUTION)));
     const contours = [];
     let current = [];
     let last = [0, 0];
@@ -39,8 +40,8 @@
       last = [x, y];
     };
     const sampleCubic = (x0, y0, x1, y1, x2, y2, x3, y3) => {
-      for (let i = 1; i <= BEZIER_SAMPLES; i++) {
-        const t = i / BEZIER_SAMPLES;
+      for (let i = 1; i <= samples; i++) {
+        const t = i / samples;
         const u = 1 - t;
         const u2 = u * u, u3 = u2 * u;
         const t2 = t * t, t3 = t2 * t;
@@ -48,8 +49,8 @@
       }
     };
     const sampleQuad = (x0, y0, x1, y1, x2, y2) => {
-      for (let i = 1; i <= BEZIER_SAMPLES; i++) {
-        const t = i / BEZIER_SAMPLES;
+      for (let i = 1; i <= samples; i++) {
+        const t = i / samples;
         const u = 1 - t;
         add(u * u * x0 + 2 * u * t * x1 + t * t * x2, u * u * y0 + 2 * u * t * y1 + t * t * y2);
       }
@@ -399,6 +400,7 @@
         const v = (val("textAlign", "left") || "left").toLowerCase();
         return v === "center" || v === "right" ? v : "left";
       })(),
+      resolution: Math.max(2, Math.min(128, Math.round(Number(val("resolution", DEFAULT_RESOLUTION)) || DEFAULT_RESOLUTION))),
       addStake: (form?.elements?.addStake && form.elements.addStake.checked) || false,
       stakeWidth: toFiniteNumber(val("stakeWidth", 8), "Stake width"),
       stakeHeight: toFiniteNumber(val("stakeHeight", 60), "Stake height")
@@ -431,7 +433,8 @@
               const path = font.getPath(lines[i], 0, baselineY, fontSize);
               pathsPerLine.push(path);
             }
-            const glyphRaw = pathsPerLine.map((p) => flattenPath(p));
+            const resolution = Math.max(2, Math.min(128, Math.round(params.resolution ?? DEFAULT_RESOLUTION)));
+            const glyphRaw = pathsPerLine.map((p) => flattenPath(p, resolution));
             const allRaw = [];
             for (let g = 0; g < glyphRaw.length; g++) {
               for (let c = 0; c < glyphRaw[g].length; c++) allRaw.push(glyphRaw[g][c]);

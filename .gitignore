@@ -4,3 +4,4 @@ cache/
 .DS_Store
 Thumbs.db
 *.log
+FIX-HOLES-AND-DEPLOY.md
