@@ -450,89 +450,55 @@ export async function generate(params, options = {}) {
     console.error(`[debug] glyphContours.length=${glyphContours.length} text="${text}"`);
   }
 
-  // Per-glyph: classify by winding (like 3d-print-letterpress). First contour = outer orientation; same = outer, opposite = hole.
+  // Per-glyph: classify outers vs holes by containment (works with mixed case where winding may differ)
   for (let gi = 0; gi < glyphContours.length; gi++) {
     const glyph = glyphContours[gi];
     const closed = glyph
       .filter((c) => c.length >= 3)
-      .map((c) => ensureClosed(c));
+      .map((c) => ensureClosed(c))
+      .filter((c) => Math.abs(signedArea(c)) > 1e-6);
     if (closed.length === 0) continue;
 
-    // Base orientation: use first contour, or the contour with largest area (outer is usually biggest)
-    let baseSign = Math.sign(signedArea(closed[0]));
-    if (baseSign === 0) {
-      let maxArea = 0;
-      for (let i = 0; i < closed.length; i++) {
-        const a = Math.abs(signedArea(closed[i]));
-        if (a > maxArea) {
-          maxArea = a;
-          baseSign = Math.sign(signedArea(closed[i]));
-        }
-      }
-    }
-    if (baseSign === 0) continue;
+    // Sort contours by area (descending) - larger contours are checked first for containment
+    const sorted = closed
+      .map((c, i) => ({ contour: c, area: Math.abs(signedArea(c)), index: i }))
+      .sort((a, b) => b.area - a.area);
 
+    // Classify each contour: if its centroid is inside a larger contour, it's a hole of that contour
     const outers = [];
     const holes = [];
-    for (let i = 0; i < closed.length; i++) {
-      const s = Math.sign(signedArea(closed[i]));
-      if (s === 0) continue;
-      if (s === baseSign) outers.push({ contour: closed[i], index: i });
-      else holes.push(closed[i]);
-    }
+    const contourParent = new Array(sorted.length).fill(-1); // -1 = outer, >= 0 = index of parent outer
 
-    // If no outers (e.g. CFF put hole first), treat largest-area contour as outer
-    if (outers.length === 0 && closed.length > 0) {
-      let bestIdx = 0;
-      let bestArea = Math.abs(signedArea(closed[0]));
-      for (let i = 1; i < closed.length; i++) {
-        const a = Math.abs(signedArea(closed[i]));
-        if (a > bestArea) {
-          bestArea = a;
-          bestIdx = i;
+    for (let i = 0; i < sorted.length; i++) {
+      const cen = contourCentroid(sorted[i].contour);
+      let parentIdx = -1;
+      // Check if this contour is inside any larger contour
+      for (let j = 0; j < i; j++) {
+        // Only check larger contours that are outers (not themselves holes)
+        if (contourParent[j] !== -1) continue;
+        if (pointInPolygon(cen, sorted[j].contour)) {
+          parentIdx = j;
+          break; // Found immediate parent (first/largest containing contour)
         }
       }
-      baseSign = Math.sign(signedArea(closed[bestIdx]));
-      for (let i = 0; i < closed.length; i++) {
-        const s = Math.sign(signedArea(closed[i]));
-        if (s === 0) continue;
-        if (s === baseSign) outers.push({ contour: closed[i], index: i });
-        else holes.push(closed[i]);
+      contourParent[i] = parentIdx;
+      if (parentIdx === -1) {
+        outers.push({ contour: sorted[i].contour, index: outers.length, sortedIndex: i });
+      } else {
+        holes.push(sorted[i].contour);
       }
     }
 
-    if (outers.length === 0) continue;
-
-    // Some fonts (e.g. small "o") use same winding for outer and hole; fix: two contours with same sign -> treat smaller as hole
-    if (closed.length === 2 && outers.length === 2 && holes.length === 0) {
-      const c0 = outers[0].contour;
-      const c1 = outers[1].contour;
-      const cen1 = contourCentroid(c1);
-      const cen0 = contourCentroid(c0);
-      if (pointInPolygon(cen1, c0)) {
-        outers = [outers[0]];
-        holes = [c1];
-      } else if (pointInPolygon(cen0, c1)) {
-        outers = [outers[1]];
-        holes = [c0];
-      }
-    }
-
-    // Assign each hole to the smallest outer that contains its centroid
+    // Assign each hole to its containing outer
     const holesByOuter = outers.map(() => []);
-    for (const hole of holes) {
-      const cen = contourCentroid(hole);
-      let bestK = -1;
-      let bestArea = Infinity;
-      for (let k = 0; k < outers.length; k++) {
-        if (!pointInPolygon(cen, outers[k].contour)) continue;
-        const a = Math.abs(signedArea(outers[k].contour));
-        if (a < bestArea) {
-          bestArea = a;
-          bestK = k;
-        }
+    for (let i = 0; i < sorted.length; i++) {
+      if (contourParent[i] === -1) continue; // This is an outer, not a hole
+      // Find which outer index corresponds to the parent
+      const parentSortedIdx = contourParent[i];
+      const outerIdx = outers.findIndex((o) => o.sortedIndex === parentSortedIdx);
+      if (outerIdx >= 0) {
+        holesByOuter[outerIdx].push(sorted[i].contour);
       }
-      if (bestK >= 0) holesByOuter[bestK].push(hole);
     }
 
     if (debug) {

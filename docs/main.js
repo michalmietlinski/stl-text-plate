@@ -277,74 +277,40 @@
     if (params.glyphContours && params.glyphContours.length > 0) {
       for (let gi = 0; gi < params.glyphContours.length; gi++) {
         const glyph = params.glyphContours[gi];
-        const closed = glyph.filter((c) => c.length >= 3).map(ensureClosed);
+        const closed = glyph.filter((c) => c.length >= 3).map(ensureClosed).filter((c) => Math.abs(signedArea(c)) > 1e-6);
         if (closed.length === 0) continue;
-        let baseSign = Math.sign(signedArea(closed[0]));
-        if (baseSign === 0) {
-          let maxArea = 0;
-          for (let i = 0; i < closed.length; i++) {
-            const a = Math.abs(signedArea(closed[i]));
-            if (a > maxArea) {
-              maxArea = a;
-              baseSign = Math.sign(signedArea(closed[i]));
-            }
-          }
-        }
-        if (baseSign === 0) continue;
+
+        const sorted = closed
+          .map((c, i) => ({ contour: c, area: Math.abs(signedArea(c)), index: i }))
+          .sort((a, b) => b.area - a.area);
         const outers = [];
-        const holes = [];
-        for (let i = 0; i < closed.length; i++) {
-          const s = Math.sign(signedArea(closed[i]));
-          if (s === 0) continue;
-          if (s === baseSign) outers.push(closed[i]);
-          else holes.push(closed[i]);
-        }
-        if (outers.length === 0 && closed.length > 0) {
-          let bestIdx = 0, bestArea = Math.abs(signedArea(closed[0]));
-          for (let i = 1; i < closed.length; i++) {
-            const a = Math.abs(signedArea(closed[i]));
-            if (a > bestArea) {
-              bestArea = a;
-              bestIdx = i;
+        const contourParent = new Array(sorted.length).fill(-1);
+        for (let i = 0; i < sorted.length; i++) {
+          const cen = contourCentroid(sorted[i].contour);
+          let parentIdx = -1;
+          for (let j = 0; j < i; j++) {
+            if (contourParent[j] !== -1) continue;
+            if (pointInPolygon(cen, sorted[j].contour)) {
+              parentIdx = j;
+              break;
             }
           }
-          baseSign = Math.sign(signedArea(closed[bestIdx]));
-          outers.length = 0;
-          holes.length = 0;
-          for (let i = 0; i < closed.length; i++) {
-            const s = Math.sign(signedArea(closed[i]));
-            if (s === 0) continue;
-            if (s === baseSign) outers.push(closed[i]);
-            else holes.push(closed[i]);
-          }
-        }
-        if (closed.length === 2 && outers.length === 2 && holes.length === 0) {
-          const c0 = outers[0], c1 = outers[1];
-          const cen1 = contourCentroid(c1), cen0 = contourCentroid(c0);
-          if (pointInPolygon(cen1, c0)) {
-            outers.length = 0; outers.push(c0);
-            holes.length = 0; holes.push(c1);
-          } else if (pointInPolygon(cen0, c1)) {
-            outers.length = 0; outers.push(c1);
-            holes.length = 0; holes.push(c0);
+          contourParent[i] = parentIdx;
+          if (parentIdx === -1) {
+            outers.push({ contour: sorted[i].contour, sortedIndex: i });
           }
         }
         const holesByOuter = outers.map(() => []);
-        for (let hi = 0; hi < holes.length; hi++) {
-          const cen = contourCentroid(holes[hi]);
-          let bestK = -1, bestArea = Infinity;
-          for (let k = 0; k < outers.length; k++) {
-            if (!pointInPolygon(cen, outers[k])) continue;
-            const a = Math.abs(signedArea(outers[k]));
-            if (a < bestArea) {
-              bestArea = a;
-              bestK = k;
-            }
+        for (let i = 0; i < sorted.length; i++) {
+          if (contourParent[i] === -1) continue;
+          const parentSortedIdx = contourParent[i];
+          const outerIdx = outers.findIndex((o) => o.sortedIndex === parentSortedIdx);
+          if (outerIdx >= 0) {
+            holesByOuter[outerIdx].push(sorted[i].contour);
           }
-          if (bestK >= 0) holesByOuter[bestK].push(holes[hi]);
         }
         for (let k = 0; k < outers.length; k++) {
-          const outerContour = outers[k].map((p) => [p[0], p[1]]);
+          const outerContour = outers[k].contour.map((p) => [p[0], p[1]]);
           if (signedArea(outerContour) < 0) outerContour.reverse();
           const outerSign = Math.sign(signedArea(outerContour));
           const holesForEarcut = holesByOuter[k].map((h) => {
