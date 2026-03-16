@@ -277,14 +277,23 @@ export async function loadFont(source) {
   return null;
 }
 
+/** Horizontal offset for text block: left = padding, center = centered, right = rectWidth - padding. */
+function offsetXForAlign(align, rectWidth, padding, boundsMinX, boundsWidth, scale) {
+  const a = (align || "left").toLowerCase();
+  if (a === "right") return rectWidth - padding - (boundsMinX + boundsWidth) * scale;
+  if (a === "center") return rectWidth / 2 - (boundsMinX + boundsWidth / 2) * scale;
+  return padding - boundsMinX * scale;
+}
+
 /**
- * Get text contours using opentype font. Scaled to fit rect, centered.
+ * Get text contours using opentype font. Scaled to fit rect; horizontal alignment via opts.textAlign (left|center|right).
  * Supports line breaks (\n or \r\n): each line is laid out with a vertical offset, then the block is scaled to fit.
- * Uses getPaths() for one path per glyph so we can group contours by letter (TTF and CFF safe).
- * Returns { glyphContours, bounds } where glyphContours = [ [contour, contour, ...], ... ] per glyph.
+ * Per-line alignment: each line is aligned independently based on its own width.
+ * Returns { glyphContours, bounds } where glyphContours = [ [contour, contour, ...], ... ] per line.
  */
 export function getTextContoursFromFont(font, text, rectWidth, rectHeight, letterHeightMm, padding = 1, opts = {}) {
   if (!text || !font) return { glyphContours: [], bounds: { width: 0, height: 0 } };
+  const textAlign = (opts.textAlign || "left").toLowerCase();
   const fontSize = 100;
   const lineHeight = fontSize * 1.2;
   const lines = String(text).split(/\r?\n/);
@@ -304,28 +313,46 @@ export function getTextContoursFromFont(font, text, rectWidth, rectHeight, lette
   const allRaw = glyphRaw.flat();
   const bounds = contoursBounds(allRaw);
   if (bounds.width < 1e-6 || bounds.height < 1e-6) return { glyphContours: [], bounds };
+  
+  // Calculate scale based on entire text block to ensure all lines use the same font size
   const scale = Math.min(
     Math.max(0.1, rectWidth - 2 * padding) / bounds.width,
     Math.max(0.1, rectHeight - 2 * padding) / bounds.height
   ) || 1;
-  const offsetX = rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale;
+  
+  // Vertical centering is based on the entire block
   const offsetY = rectHeight / 2 - (bounds.minY + bounds.height / 2) * scale;
-  const fit = (c) =>
-    c.map(([x, y]) => {
-      const px = x * scale + offsetX;
-      const py = y * scale + offsetY;
-      return [px, rectHeight - py];
-    });
-  const glyphContours = glyphRaw.map((contours) => contours.map((c) => fit(c)));
+  
+  // Apply transformation with per-line horizontal alignment
+  const glyphContours = glyphRaw.map((lineContours) => {
+    if (lineContours.length === 0) return [];
+    
+    // Calculate bounds for this specific line
+    const lineBounds = contoursBounds(lineContours);
+    
+    // Calculate horizontal offset for this line based on its own width
+    const lineOffsetX = offsetXForAlign(textAlign, rectWidth, padding, lineBounds.minX, lineBounds.width, scale);
+    
+    // Transform contours for this line with its specific horizontal offset
+    return lineContours.map((c) =>
+      c.map(([x, y]) => {
+        const px = x * scale + lineOffsetX;
+        const py = y * scale + offsetY;
+        return [px, rectHeight - py];
+      })
+    );
+  });
+  
   return { glyphContours, bounds };
 }
 
 /**
  * Get text segments using JSCAD vectorText (built-in font). Returns array of segments (each segment = [[x,y],...]).
- * Supports line breaks (\n or \r\n). Scaled to fit rect and centered.
+ * Supports line breaks (\n or \r\n). Scaled to fit rect; horizontal alignment via textAlign (left|center|right).
  */
-export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 1) {
+export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 1, textAlign = "left") {
   if (!textStr) return [];
+  const align = (textAlign || "left").toLowerCase();
   const height = 21;
   const lineHeight = height * 1.3;
   const lines = String(textStr).split(/\r?\n/);
@@ -351,7 +378,7 @@ export function getTextSegmentsVector(textStr, rectWidth, rectHeight, padding = 
   const innerW = Math.max(0.1, rectWidth - 2 * padding);
   const innerH = Math.max(0.1, rectHeight - 2 * padding);
   const scale = Math.min(innerW / width, innerH / height2) || 1;
-  const offsetX = rectWidth / 2 - (minX + width / 2) * scale;
+  const offsetX = offsetXForAlign(align, rectWidth, padding, minX, width, scale);
   const offsetY = rectHeight / 2 - (minY + height2 / 2) * scale;
 
   return allSegments.map((seg) =>
@@ -397,7 +424,7 @@ function createStake(stakeWidth, thickness, stakeHeight) {
 }
 
 /**
- * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, resolution?, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
+ * @param {object} params - { rectangleWidth, rectangleHeight, thickness, letterHeight, text, textAlign?, resolution?, fontPath?, fontUrl?, padding?, addStake?, stakeWidth?, stakeHeight? }
  */
 export async function generate(params, options = {}) {
   const name = options.name || "text_plate";
@@ -408,6 +435,9 @@ export async function generate(params, options = {}) {
   const text = params.text != null ? String(params.text) : "HELLO";
   const padding = toFiniteNumber(params.padding ?? 2, "padding");
   const resolution = params.resolution != null ? Math.max(2, Math.min(128, Math.round(Number(params.resolution)))) : DEFAULT_RESOLUTION;
+  const textAlign = ["left", "center", "right"].includes(String(params.textAlign || "left").toLowerCase())
+    ? String(params.textAlign).toLowerCase()
+    : "left";
   const fontPath = params.fontPath ?? null;
   const fontUrl = params.fontUrl ?? params.fontPath ?? null;
   const addStake = params.addStake === true;
@@ -431,11 +461,11 @@ export async function generate(params, options = {}) {
   if (!font && fontPath) font = await loadFont(fontPath);
   if (options.debug) console.error(`[debug] font loaded: ${!!font} (tried url then path)`);
   if (font) {
-    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, { ...options, resolution });
+    const out = getTextContoursFromFont(font, text, rectangleWidth, rectangleHeight, letterHeight, padding, { ...options, textAlign, resolution });
     glyphContours = out.glyphContours || [];
   }
   if (glyphContours.length === 0) {
-    const segments = getTextSegmentsVector(text, rectangleWidth, rectangleHeight, padding);
+    const segments = getTextSegmentsVector(text, rectangleWidth, rectangleHeight, padding, textAlign);
     if (segments.length > 0) glyphContours = segments.map((s) => [s]);
     if (options.debug) console.error(`[debug] using vector fallback: ${segments.length} segments`);
     if (fontPath || fontUrl) {
@@ -550,6 +580,7 @@ export async function generate(params, options = {}) {
       letterHeight,
       text,
       name,
+      textAlign,
       resolution,
       addStake: addStake || undefined,
       stakeWidth: addStake ? stakeWidth : undefined,

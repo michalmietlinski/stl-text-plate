@@ -5,6 +5,7 @@
   "letterHeight": 2,
   "text": "HELLO",
   "padding": 2,
+  "textAlign": "left",
   "resolution": 16,
   "fontUrl": "https://cdn.jsdelivr.net/npm/opensans-font@1.0.0/OpenSans-Bold.ttf",
   "addStake": true,

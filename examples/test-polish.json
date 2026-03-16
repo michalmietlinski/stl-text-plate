@@ -3,8 +3,9 @@
   "rectangleHeight": 50,
   "thickness": 2,
   "letterHeight": 2,
-  "text": "Pomidor Malinowy",
+  "text": "Short\nLonger Text Line",
   "padding": 3,
+  "textAlign": "right",
   "fontUrl": "https://cdn.jsdelivr.net/npm/opensans-font@1.0.0/OpenSans-Bold.ttf",
   "addStake": false
 }
