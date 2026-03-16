@@ -4,7 +4,6 @@
   "thickness": 2,
   "letterHeight": 2,
   "text": "HELLO",
-  "textAlign": "left",
   "padding": 2,
   "resolution": 16,
   "fontUrl": "https://cdn.jsdelivr.net/npm/opensans-font@1.0.0/OpenSans-Bold.ttf",

@@ -396,10 +396,6 @@
       letterHeight: toFiniteNumber(val("letterHeight", 2), "Letter height"),
       text: (val("text", "HELLO") || "HELLO").trim(),
       padding: toFiniteNumber(val("padding", 2), "Padding"),
-      textAlign: (function () {
-        const v = (val("textAlign", "left") || "left").toLowerCase();
-        return v === "center" || v === "right" ? v : "left";
-      })(),
       resolution: Math.max(2, Math.min(128, Math.round(Number(val("resolution", DEFAULT_RESOLUTION)) || DEFAULT_RESOLUTION))),
       addStake: (form?.elements?.addStake && form.elements.addStake.checked) || false,
       stakeWidth: toFiniteNumber(val("stakeWidth", 8), "Stake width"),
@@ -444,15 +440,10 @@
               const rectWidth = params.rectangleWidth;
               const rectHeight = params.rectangleHeight;
               const padding = params.padding ?? 2;
-              const textAlign = params.textAlign || "left";
               const innerW = Math.max(0.1, rectWidth - 2 * padding);
               const innerH = Math.max(0.1, rectHeight - 2 * padding);
               const scale = Math.min(innerW / bounds.width, innerH / bounds.height) || 1;
-              const offsetX = textAlign === "right"
-                ? rectWidth - padding - (bounds.minX + bounds.width) * scale
-                : textAlign === "center"
-                  ? rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale
-                  : padding - bounds.minX * scale;
+              const offsetX = rectWidth / 2 - (bounds.minX + bounds.width / 2) * scale;
               const offsetY = rectHeight / 2 - (bounds.minY + bounds.height / 2) * scale;
               const fit = (c) =>
                 c.map(([x, y]) => {
